@@ -1,0 +1,223 @@
+module tlv8413_interface  #( parameter clk_freq_hz = 22118400 )
+( 
+input         clk  ,             /* 系统时钟                      */
+input         rst_n,             /* 系统复位信号 低电平有效       */
+input  [7:0]  DAC8413_DB0,       /* 通道0 DA设置值                */
+input  [7:0]  DAC8413_DB1,       /* 通道1 DA设置值                */
+input  [7:0]  DAC8413_DB2,       /* 通道2 DA设置值                */
+input  [7:0]  DAC8413_DB3,       /* 通道3 DA设置值                */
+output        DAC8413_RESET,     /* DAC8413 复位信号 低电平有效   */
+output        DAC8413_RW,        /* DAC8413 读写信号 1：读 0：写  */
+output        DAC8413_CS,        /* DAC8413 片选信号              */
+output        DAC8413_LDAC,      /* DAC8413 LDAC                  */
+output        DAC8413_A1,        /* DAC8413 地址高位              */
+output        DAC8413_A0,        /* DAC8413 地址低位              */
+output [11:0] DAC8413_DB         /* DAC8413 DA输出值              */
+);
+
+/* parameter */
+localparam CLK_PERIOD_NS  = 1000000000/clk_freq_hz;
+localparam CS_CNT         = 500/CLK_PERIOD_NS;  // Twcs = 300ns  Twcs,min = 150ns
+localparam LDAC_HIGH_CNT  = 300/CLK_PERIOD_NS;  
+localparam LOAD_HOLD_CNT  = 300/CLK_PERIOD_NS;  // Tlh = 200ns   Tlh,min = 70ns
+localparam LOAD_SETUP_CNT = 300/CLK_PERIOD_NS;  // Tls = 200ns   Tls,min = 50ns
+
+/* statements */
+reg        DAC_RESET;
+reg        DAC_RW;
+reg        DAC_CS;
+reg        DAC_LDAC;
+reg        DAC_A1;
+reg        DAC_A0;
+reg [7:0]  DAC_DB; 
+
+reg [7:0] DAC8413_DB0_buf; 
+reg [7:0] DAC8413_DB1_buf;
+reg [7:0] DAC8413_DB2_buf;
+reg [7:0] DAC8413_DB3_buf;
+
+reg [3:0] cnt;
+reg [2:0] state /* synthesis syn_encoding = "safe" */ ;
+
+always @(posedge clk or negedge rst_n)
+begin
+    if(~rst_n)begin
+        DAC8413_DB0_buf <= 8'd0;        
+        DAC8413_DB1_buf <= 8'd0;       
+        DAC8413_DB2_buf <= 8'd0;       
+        DAC8413_DB3_buf <= 8'd0;             
+        DAC_RESET       <= 1'b0;              
+        DAC_RW          <= 1'b1;               
+        DAC_CS          <= 1'b1;               
+        DAC_LDAC        <= 1'b1;                
+        DAC_A1          <= 1'b0;             
+        DAC_A0          <= 1'b0;               
+        DAC_DB          <= 8'd0;  
+        cnt             <= 4'd0;
+        state           <= 3'd0;
+    end else begin
+    case(state)
+    3'd0:begin
+        DAC8413_DB0_buf <= DAC8413_DB0_buf;        
+        DAC8413_DB1_buf <= DAC8413_DB1_buf;       
+        DAC8413_DB2_buf <= DAC8413_DB2_buf;
+        DAC8413_DB3_buf <= DAC8413_DB3_buf;           
+        DAC_RESET       <= 1'b1;              
+        DAC_RW          <= 1'b1;               
+        DAC_CS          <= 1'b1;               
+        DAC_LDAC        <= 1'b1;                
+        DAC_A1          <= 1'b0;             
+        DAC_A0          <= 1'b0;               
+        DAC_DB          <= 8'd0;    
+        cnt             <= 4'd0;
+        state           <= 3'd1; 
+    end
+    
+    3'd1:begin
+        if(DAC8413_DB0 != DAC8413_DB0_buf)begin
+            DAC8413_DB0_buf <= DAC8413_DB0;   
+            DAC_RW          <= 1'b1;            
+            DAC_CS          <= 1'b1;               
+            DAC_LDAC        <= 1'b1;                
+            DAC_A1          <= 1'b0;             
+            DAC_A0          <= 1'b0;               
+            DAC_DB          <= DAC8413_DB0;  
+            cnt             <= 4'd0;
+            state           <= 3'd2;
+        end else if(DAC8413_DB1 != DAC8413_DB1_buf)begin
+            DAC8413_DB1_buf <= DAC8413_DB1;    
+            DAC_RW          <= 1'b1;          
+            DAC_CS          <= 1'b1;               
+            DAC_LDAC        <= 1'b1;                
+            DAC_A1          <= 1'b0;             
+            DAC_A0          <= 1'b1;               
+            DAC_DB          <= DAC8413_DB1;   
+            cnt             <= 4'd0;
+            state           <= 3'd2;
+        end else if(DAC8413_DB2 != DAC8413_DB2_buf)begin
+            DAC8413_DB2_buf <= DAC8413_DB2;  
+            DAC_RW          <= 1'b1;              
+            DAC_CS          <= 1'b1;               
+            DAC_LDAC        <= 1'b1;                
+            DAC_A1          <= 1'b1;             
+            DAC_A0          <= 1'b0;               
+            DAC_DB          <= DAC8413_DB2;   
+            cnt             <= 4'd0;
+            state           <= 3'd2;            
+        end else if(DAC8413_DB3 != DAC8413_DB3_buf)begin
+            DAC8413_DB3_buf <= DAC8413_DB3;  
+            DAC_RW          <= 1'b1;                    
+            DAC_CS          <= 1'b1;               
+            DAC_LDAC        <= 1'b1;                
+            DAC_A1          <= 1'b1;             
+            DAC_A0          <= 1'b1;               
+            DAC_DB          <= DAC8413_DB3;
+            cnt             <= 4'd0;
+            state           <= 3'd2;                      
+        end else begin
+            DAC8413_DB0_buf <= DAC8413_DB0_buf;        
+            DAC8413_DB1_buf <= DAC8413_DB1_buf;       
+            DAC8413_DB2_buf <= DAC8413_DB2_buf;
+            DAC8413_DB3_buf <= DAC8413_DB3_buf;            
+            DAC_RESET       <= 1'b1;              
+            DAC_RW          <= 1'b1;               
+            DAC_CS          <= 1'b1;               
+            DAC_LDAC        <= 1'b1;                
+            DAC_A1          <= 1'b0;             
+            DAC_A0          <= 1'b0;               
+            DAC_DB          <= 8'd0; 
+            cnt             <= 4'd0;
+            state           <= 3'd1;                        
+        end 
+    end
+
+    3'd2:begin
+            DAC_A1          <= DAC_A1;             
+            DAC_A0          <= DAC_A0;               
+            DAC_DB          <= DAC_DB;
+        if(cnt < LDAC_HIGH_CNT)begin
+            DAC_RW          <= 1'b1;               
+            DAC_CS          <= 1'b1;               
+            DAC_LDAC        <= 1'b1;                                 
+            cnt             <= cnt + 1'b1;
+            state           <= 3'd2;    
+        end else begin
+            DAC_RW          <= 1'b1;               
+            DAC_CS          <= 1'b1;               
+            DAC_LDAC        <= 1'b0;                                
+            cnt             <= 4'd0;
+            state           <= 3'd3;    
+        end
+    end 
+
+    3'd3:begin
+            DAC_A1          <= DAC_A1;             
+            DAC_A0          <= DAC_A0;               
+            DAC_DB          <= DAC_DB;
+        if(cnt < LOAD_SETUP_CNT)begin
+            DAC_RW          <= 1'b1;               
+            DAC_CS          <= 1'b1;               
+            DAC_LDAC        <= 1'b0;                                 
+            cnt             <= cnt + 1'b1;
+            state           <= 3'd3;    
+        end else begin
+            DAC_RW          <= 1'b0;               
+            DAC_CS          <= 1'b0;               
+            DAC_LDAC        <= 1'b0;                                
+            cnt             <= 4'd0;
+            state           <= 3'd4;    
+        end
+    end
+
+    3'd4:begin
+            DAC_A1          <= DAC_A1;             
+            DAC_A0          <= DAC_A0;               
+            DAC_DB          <= DAC_DB;
+        if(cnt < CS_CNT)begin
+            DAC_RW          <= 1'b0;               
+            DAC_CS          <= 1'b0;               
+            DAC_LDAC        <= 1'b0;                                 
+            cnt             <= cnt + 1'b1;
+            state           <= 3'd4;    
+        end else begin
+            DAC_RW          <= 1'b1;               
+            DAC_CS          <= 1'b1;               
+            DAC_LDAC        <= 1'b0;                                
+            cnt             <= 4'd0;
+            state           <= 3'd5;    
+        end
+    end
+
+    3'd5:begin
+            DAC_A1          <= DAC_A1;             
+            DAC_A0          <= DAC_A0;               
+            DAC_DB          <= DAC_DB;
+        if(cnt < LOAD_HOLD_CNT)begin
+            DAC_RW          <= 1'b1;               
+            DAC_CS          <= 1'b1;               
+            DAC_LDAC        <= 1'b0;                                 
+            cnt             <= cnt + 1'b1;
+            state           <= 3'd5;    
+        end else begin
+            DAC_RW          <= 1'b1;               
+            DAC_CS          <= 1'b1;               
+            DAC_LDAC        <= 1'b1;                                
+            cnt             <= 4'd0;
+            state           <= 3'd0;    
+        end
+    end
+
+    default : state           <= 3'd0;
+    endcase
+    end
+end
+
+assign DAC8413_RESET = DAC_RESET;           
+assign DAC8413_RW    = DAC_RW;                         
+assign DAC8413_LDAC  = DAC_LDAC;            
+assign DAC8413_A1    = DAC_A1;                
+assign DAC8413_A0    = DAC_A0;                
+assign DAC8413_DB    = {DAC_DB, 4'd0};  
+assign DAC8413_CS    = DAC_CS;            
+
+endmodule
